@@ -32,6 +32,63 @@ def fmt(data: Any, *, concise: bool = True) -> str:
     return json.dumps(data, indent=2)
 
 
+# ---------------------------------------------------------------------------
+#  DD-338 Phase A.1 — Track 3 — _meta envelope (JSON tail block)
+# ---------------------------------------------------------------------------
+#
+#  Architect amendment 2026-05-21 — canonical wire shape is JSON tail block,
+#  not pipe-delimited. Single line appended after \n\n. Assembler regex:
+#      \n\n_meta: (\{.*\})$
+#  Required fields: matched_total, returned, filtered_by, latency_ms.
+#  Optional: redactions, next_cursor, error_notes.
+#  filtered_by is sorted alphabetically for hash reproducibility.
+# ---------------------------------------------------------------------------
+
+
+def meta_envelope(
+    *,
+    matched_total: int,
+    returned: int,
+    filtered_by: list[str] | None = None,
+    redactions: list[str] | None = None,
+    latency_ms: int,
+) -> str:
+    """Render the canonical JSON-tail _meta envelope line.
+
+    Returns the literal line ``_meta: {"matched_total": ..., ...}`` — caller
+    is responsible for joining it to the payload with ``\\n\\n``.
+    """
+    fb = sorted(filtered_by) if filtered_by else []
+    rd = list(redactions) if redactions else []
+    payload = {
+        "matched_total": matched_total,
+        "returned": returned,
+        "filtered_by": fb,
+        "redactions": rd,
+        "latency_ms": latency_ms,
+    }
+    return "_meta: " + json.dumps(payload, separators=(",", ":"))
+
+
+def append_meta(
+    payload: str,
+    *,
+    matched_total: int,
+    returned: int,
+    filtered_by: list[str] | None = None,
+    redactions: list[str] | None = None,
+    latency_ms: int,
+) -> str:
+    """Append the _meta envelope tail line to a serialized payload."""
+    return payload + "\n\n" + meta_envelope(
+        matched_total=matched_total,
+        returned=returned,
+        filtered_by=filtered_by,
+        redactions=redactions,
+        latency_ms=latency_ms,
+    )
+
+
 def short_id(device_id: str) -> str:
     """Truncate a Syncthing device ID to its first block."""
     return device_id[:SHORT_ID_LEN] if device_id else ""
