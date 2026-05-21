@@ -12,6 +12,7 @@ from syncthing_mcp.models import (
     FolderNeedInput,
     PauseFolderInput,
     SetIgnoresInput,
+    _resolve_scope_folders,
 )
 
 
@@ -109,3 +110,55 @@ class TestFolderNeedInput:
     def test_per_page_max(self):
         with pytest.raises(ValidationError):
             FolderNeedInput(folder_id="f1", per_page=501)
+
+
+# ---------------------------------------------------------------------------
+# DD-338 Phase A.1 — Track 1 — _resolve_scope_folders helper
+# ---------------------------------------------------------------------------
+
+
+class TestResolveScopeFolders:
+    def test_none_scope_returns_none(self):
+        s, r = _resolve_scope_folders(None, None)
+        assert s is None
+        assert r == []
+
+    def test_public_raises(self):
+        with pytest.raises(ValueError, match="public"):
+            _resolve_scope_folders("public", None)
+
+    def test_unknown_scope_treated_as_unconfigured(self):
+        s, r = _resolve_scope_folders("bogus", None)
+        assert s is None
+        assert r == ["scope=bogus_unconfigured"]
+
+    def test_configured_env_var(self, monkeypatch):
+        monkeypatch.setenv("SYNCTHING_WORK_FOLDERS", "fld1, fld2,fld3")
+        s, r = _resolve_scope_folders("work", None)
+        assert s == {"fld1", "fld2", "fld3"}
+        assert r == []
+
+    def test_empty_env_var_matches_nothing(self, monkeypatch):
+        monkeypatch.setenv("SYNCTHING_PERSONAL_FOLDERS", "")
+        s, r = _resolve_scope_folders("personal", None)
+        # Empty env still counts as configured but yields empty set
+        assert s == set()
+        assert r == []
+
+    def test_unconfigured_in_vocab_redacts(self, monkeypatch):
+        monkeypatch.delenv("SYNCTHING_FAMILY_FOLDERS", raising=False)
+        s, r = _resolve_scope_folders("family", None)
+        assert s is None
+        assert r == ["scope=family_unconfigured"]
+
+    def test_per_instance_env_takes_precedence(self, monkeypatch):
+        monkeypatch.setenv("SYNCTHING_WORK_FOLDERS", "fld-default")
+        monkeypatch.setenv("SYNCTHING_WORK_FOLDERS_VIKING", "fld-viking1,fld-viking2")
+        s, _ = _resolve_scope_folders("work", "viking")
+        assert s == {"fld-viking1", "fld-viking2"}
+
+    def test_per_instance_falls_back_to_base(self, monkeypatch):
+        monkeypatch.setenv("SYNCTHING_WORK_FOLDERS", "fld-default")
+        monkeypatch.delenv("SYNCTHING_WORK_FOLDERS_VOYAGER", raising=False)
+        s, _ = _resolve_scope_folders("work", "voyager")
+        assert s == {"fld-default"}

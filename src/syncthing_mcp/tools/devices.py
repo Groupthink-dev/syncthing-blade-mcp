@@ -1,9 +1,17 @@
 """Device listing, completion, connection, and stats tools."""
 
+import time
 from typing import Any
 
-from syncthing_mcp.formatters import fmt, format_bytes, format_connection, format_device, truncate
-from syncthing_mcp.models import DeviceReadParams, ReadParams
+from syncthing_mcp.formatters import (
+    append_meta,
+    fmt,
+    format_bytes,
+    format_connection,
+    format_device,
+    truncate,
+)
+from syncthing_mcp.models import DeviceReadParams, ReadParams, _resolve_scope_folders
 from syncthing_mcp.registry import get_instance, handle_error_global
 from syncthing_mcp.server import mcp
 
@@ -19,13 +27,42 @@ from syncthing_mcp.server import mcp
     },
 )
 async def syncthing_list_devices(params: ReadParams) -> str:
-    """All configured devices with connection status and last seen time."""
+    """All configured devices with connection status and last seen time.
+
+    Accepts DD-278 ``scope=`` filter. Device set is filtered to devices that
+    share at least one folder with the scoped folder set (devices have no
+    intrinsic scope tag in Syncthing's model).
+    """
+    start = time.perf_counter()
     try:
+        scope_set, redactions = _resolve_scope_folders(params.scope, params.instance)
         client = get_instance(params.instance)
         config = await client._get("/rest/config")
         connections = await client._get("/rest/system/connections")
         stats = await client._get("/rest/stats/device")
         conn_data = connections.get("connections", {})
+
+        all_devices = config.get("devices", [])
+        matched_total = len(all_devices)
+        filtered_by: list[str] = []
+
+        if scope_set is not None:
+            # Devices in any folder whose id ∈ scope_set
+            scoped_device_ids: set[str] = set()
+            for f in config.get("folders", []):
+                if f.get("id") in scope_set:
+                    for d in f.get("devices", []):
+                        did = d.get("deviceID")
+                        if did:
+                            scoped_device_ids.add(did)
+            devices = [d for d in all_devices if d.get("deviceID") in scoped_device_ids]
+            filtered_by.append(f"scope={params.scope}")
+        else:
+            devices = list(all_devices)
+
+        # Track 2 — canonical sort by deviceID ascending (stable key).
+        devices.sort(key=lambda d: d.get("deviceID", ""))
+
         result = [
             format_device(
                 dev,
@@ -33,9 +70,18 @@ async def syncthing_list_devices(params: ReadParams) -> str:
                 stats.get(dev["deviceID"]),
                 concise=params.concise,
             )
-            for dev in config.get("devices", [])
+            for dev in devices
         ]
-        return fmt(result, concise=params.concise)
+        payload = fmt(result, concise=params.concise)
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return append_meta(
+            payload,
+            matched_total=matched_total,
+            returned=len(result),
+            filtered_by=filtered_by,
+            redactions=redactions,
+            latency_ms=latency_ms,
+        )
     except Exception as e:
         return handle_error_global(e)
 

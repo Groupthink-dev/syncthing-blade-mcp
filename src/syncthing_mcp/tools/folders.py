@@ -1,8 +1,10 @@
 """Folder status, completion, replication, operations, and file-level query tools."""
 
+import time
 from typing import Any
 
 from syncthing_mcp.formatters import (
+    append_meta,
     fmt,
     format_bytes,
     format_completion,
@@ -18,6 +20,7 @@ from syncthing_mcp.models import (
     FolderWriteParams,
     ReadParams,
     RemoteNeedInput,
+    _resolve_scope_folders,
 )
 from syncthing_mcp.registry import get_instance, handle_error_global
 from syncthing_mcp.server import mcp
@@ -40,8 +43,37 @@ from syncthing_mcp.server import mcp
 )
 async def syncthing_folder_status(params: FolderReadParams) -> str:
     """Detailed status for a folder — file counts, bytes, sync state.
-    Note: expensive call on the Syncthing side. Use sparingly."""
+    Note: expensive call on the Syncthing side. Use sparingly.
+
+    Accepts DD-278 ``scope=`` filter as a membership precondition. When
+    ``scope`` is set and configured, ``folder_id`` must be in the scoped
+    folder set; otherwise the call refuses with a single-line error and
+    ``_meta.redactions=["folder_outside_scope"]``.
+    """
+    start = time.perf_counter()
     try:
+        scope_set, redactions = _resolve_scope_folders(params.scope, params.instance)
+        filtered_by: list[str] = []
+        if params.scope is not None:
+            filtered_by.append(f"scope={params.scope}")
+
+        if scope_set is not None and params.folder_id not in scope_set:
+            error_payload = fmt(
+                {"error": f"folder_id '{params.folder_id}' not in scope={params.scope} folder set"},
+                concise=params.concise,
+            )
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            return append_meta(
+                error_payload,
+                matched_total=0,
+                returned=0,
+                filtered_by=filtered_by,
+                redactions=[*redactions, "folder_outside_scope"],
+                latency_ms=latency_ms,
+            )
+
+        filtered_by.append(f"folder={params.folder_id}")
+
         client = get_instance(params.instance)
         status = await client._get("/rest/db/status", params={"folder": params.folder_id})
         stats = await client._get("/rest/stats/folder")
@@ -54,7 +86,16 @@ async def syncthing_folder_status(params: FolderReadParams) -> str:
         if not params.concise:
             data["lastScan"] = folder_stats.get("lastScan", "")
             data["lastFile"] = folder_stats.get("lastFile", {})
-        return fmt(data, concise=params.concise)
+        payload = fmt(data, concise=params.concise)
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return append_meta(
+            payload,
+            matched_total=1,
+            returned=1,
+            filtered_by=filtered_by,
+            redactions=redactions,
+            latency_ms=latency_ms,
+        )
     except Exception as e:
         return handle_error_global(e)
 
@@ -145,8 +186,19 @@ async def syncthing_folder_completion(params: FolderReadParams) -> str:
 )
 async def syncthing_replication_report(params: ReadParams) -> str:
     """Replication analysis for ALL folders. Shows safe-to-remove flag and
-    reclaimable space. Primary tool for disk-space cleanup decisions."""
+    reclaimable space. Primary tool for disk-space cleanup decisions.
+
+    Accepts DD-278 ``scope=`` filter. Folder set is filtered to ids that
+    appear in the scoped folder set; unconfigured scope passes through with
+    a redaction.
+    """
+    start = time.perf_counter()
     try:
+        scope_set, redactions = _resolve_scope_folders(params.scope, params.instance)
+        filtered_by: list[str] = []
+        if params.scope is not None:
+            filtered_by.append(f"scope={params.scope}")
+
         client = get_instance(params.instance)
         config = await client._get("/rest/config")
         connections = await client._get("/rest/system/connections")
@@ -158,7 +210,13 @@ async def syncthing_replication_report(params: ReadParams) -> str:
             for d in config.get("devices", [])
         }
 
-        folders = config.get("folders", [])
+        all_folders = config.get("folders", [])
+        matched_total = len(all_folders)
+        if scope_set is not None:
+            folders = [f for f in all_folders if f.get("id") in scope_set]
+        else:
+            folders = list(all_folders)
+
         report = []
         total_reclaimable = 0
 
@@ -204,12 +262,15 @@ async def syncthing_replication_report(params: ReadParams) -> str:
                 total_reclaimable += fstatus.get("localBytes", 0)
             report.append(entry)
 
+        # Track 2 — preserve safe-first + bytes-desc ordering; add id tiebreaker
+        # so two folders with identical (safe, localBytes) sort deterministically.
         report.sort(key=lambda x: (
             -int(x.get("safe", x.get("safeToRemove", False)) or False),
             -x.get("localBytes", 0) if "localBytes" in x else 0,
+            x.get("id", ""),
         ))
 
-        return fmt({
+        payload = fmt({
             "instance": client.name,
             "summary": {
                 "total": len(report),
@@ -218,6 +279,15 @@ async def syncthing_replication_report(params: ReadParams) -> str:
             },
             "folders": report,
         }, concise=params.concise)
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return append_meta(
+            payload,
+            matched_total=matched_total,
+            returned=len(report),
+            filtered_by=filtered_by,
+            redactions=redactions,
+            latency_ms=latency_ms,
+        )
     except Exception as e:
         return handle_error_global(e)
 

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from unittest.mock import patch
 
 import pytest
@@ -9,6 +10,27 @@ import respx
 from httpx import Response
 
 from syncthing_mcp.client import SyncthingClient
+
+
+# ---------------------------------------------------------------------------
+# DD-338 _meta envelope test helper (Phase A.1 — Track 3)
+# ---------------------------------------------------------------------------
+
+_META_REGEX = re.compile(r"\n\n_meta: (\{.*\})$", re.DOTALL)
+
+
+def split_meta(text: str) -> tuple[str, dict]:
+    """Split a tool's return string into (payload, _meta dict).
+
+    Matches the assembler regex documented in the DD-338 spec amendment:
+        \\n\\n_meta: (\\{.*\\})$
+    """
+    m = _META_REGEX.search(text)
+    if not m:
+        raise AssertionError(f"_meta envelope not found in:\n{text!r}")
+    payload = text[: m.start()]
+    meta = json.loads(m.group(1))
+    return payload, meta
 
 
 # ---------------------------------------------------------------------------

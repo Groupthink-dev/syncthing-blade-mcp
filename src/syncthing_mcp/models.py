@@ -1,6 +1,60 @@
 """Pydantic input models for Syncthing MCP tools."""
 
+from __future__ import annotations
+
+import logging
+import os
+
 from pydantic import BaseModel, ConfigDict, Field
+
+
+# ---------------------------------------------------------------------------
+#  DD-278 scope-tag vocabulary (Phase A.1 — Track 1)
+# ---------------------------------------------------------------------------
+
+_VALID_SCOPES = frozenset({"work", "personal", "family", "home", "infrastructure"})
+
+_log = logging.getLogger(__name__)
+
+
+def _resolve_scope_folders(
+    scope: str | None,
+    instance: str | None,
+) -> tuple[set[str] | None, list[str]]:
+    """Resolve a DD-278 scope value to a Syncthing folder-ID set.
+
+    Returns ``(folder_id_set, redactions)``. ``folder_id_set is None`` means
+    no scope filter applies (caller iterates the full set). An empty set
+    means filter matches no folders (caller returns empty result). The
+    ``redactions`` list documents degradations for the ``_meta`` envelope.
+
+    Env-var lookup order (per-instance variant takes precedence):
+
+    1. ``SYNCTHING_<SCOPE>_FOLDERS_<INSTANCE>`` (when ``instance`` is set)
+    2. ``SYNCTHING_<SCOPE>_FOLDERS``
+
+    ``scope=public`` raises ``ValueError`` (folders cannot be public in
+    Syncthing's model). ``scope=None`` returns ``(None, [])`` — back-compat.
+    """
+    if scope is None:
+        return None, []
+    if scope == "public":
+        raise ValueError("scope=public is not applicable to Syncthing folders")
+    if scope not in _VALID_SCOPES:
+        _log.warning("scope=%r not in DD-278 vocabulary; treating as unconfigured", scope)
+        return None, [f"scope={scope}_unconfigured"]
+
+    scope_upper = scope.upper()
+    raw: str | None = None
+    if instance:
+        raw = os.environ.get(f"SYNCTHING_{scope_upper}_FOLDERS_{instance.upper()}")
+    if raw is None:
+        raw = os.environ.get(f"SYNCTHING_{scope_upper}_FOLDERS")
+    if raw is None:
+        return None, [f"scope={scope}_unconfigured"]
+
+    folder_ids = {fid.strip() for fid in raw.split(",") if fid.strip()}
+    return folder_ids, []
 
 
 # ---------------------------------------------------------------------------
@@ -18,6 +72,15 @@ class ReadParams(BaseModel):
     concise: bool = Field(
         True,
         description="Compact output (default). Set false for full details.",
+    )
+    scope: str | None = Field(
+        None,
+        description=(
+            "DD-278 scope filter — work|personal|family|home|infrastructure. "
+            "Resolved to a Syncthing folder-ID set via env var "
+            "SYNCTHING_<SCOPE>_FOLDERS (comma-separated) with per-instance "
+            "override SYNCTHING_<SCOPE>_FOLDERS_<INSTANCE>. Omit for no filter."
+        ),
     )
 
 
