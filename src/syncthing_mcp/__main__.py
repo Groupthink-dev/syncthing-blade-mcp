@@ -19,7 +19,7 @@ def _run_http() -> None:
     """Start the Streamable HTTP server with optional bearer-token auth."""
     from syncthing_mcp.server import mcp
 
-    host = os.environ.get("MCP_HOST", "0.0.0.0")
+    host = os.environ.get("MCP_HOST", "127.0.0.1")
     port = int(os.environ.get("MCP_PORT", "8000"))
     token = os.environ.get("MCP_AUTH_TOKEN", "").strip()
 
