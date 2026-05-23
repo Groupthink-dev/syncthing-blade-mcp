@@ -12,15 +12,23 @@ import pytest
 import respx
 from httpx import Response
 
-from syncthing_mcp.models import EmptyInput
+from syncthing_mcp.models import (
+    BrowseFolderInput,
+    EmptyInput,
+    FolderInput,
+    FolderNeedInput,
+    RemoteNeedInput,
+)
 from syncthing_mcp.registry import reload_instances
 from tests.conftest import (
     BASE_URL,
     DEVICE_ID_LOCAL,
     DEVICE_ID_REMOTE,
     DEVICE_ID_REMOTE2,
+    FOLDER_ID,
     make_config,
     make_connections,
+    split_meta,
 )
 
 
@@ -138,3 +146,103 @@ class TestSyncthingConnectionsDeterministic:
         # Result is JSON-formatted empty list (fmt is JSON dumper here).
         parsed = json.loads(result)
         assert parsed == []
+
+
+# ---------------------------------------------------------------------------
+# DD-338 Phase C Wave 2 — promoted-tool byte-equal determinism (N=3 each)
+# Excludes _meta.latency_ms from compare (varies per call).
+# ---------------------------------------------------------------------------
+
+
+def _strip_latency(text: str) -> str:
+    payload, meta = split_meta(text)
+    meta.pop("latency_ms", None)
+    return payload + "\n\n_meta: " + json.dumps(meta, sort_keys=True)
+
+
+class TestSyncthingFolderErrorsDeterministic:
+    async def test_byte_equal_n3(self):
+        from syncthing_mcp.tools.folders import syncthing_folder_errors
+
+        outputs: list[str] = []
+        for _ in range(3):
+            with respx.mock(base_url=BASE_URL, assert_all_called=False) as router:
+                router.get("/rest/folder/errors").respond(json={
+                    "errors": [{"path": "a/b", "error": "boom"}],
+                })
+                outputs.append(_strip_latency(
+                    await syncthing_folder_errors(FolderInput(folder_id=FOLDER_ID))
+                ))
+        first = outputs[0]
+        for i, o in enumerate(outputs[1:], start=1):
+            assert o == first, f"Non-deterministic on run {i}"
+
+
+class TestSyncthingBrowseFolderDeterministic:
+    async def test_byte_equal_n3(self):
+        from syncthing_mcp.tools.folders import syncthing_browse_folder
+
+        outputs: list[str] = []
+        for _ in range(3):
+            with respx.mock(base_url=BASE_URL, assert_all_called=False) as router:
+                router.get("/rest/db/browse").respond(json=[
+                    {"name": "a", "type": "file"},
+                    {"name": "b", "type": "directory"},
+                ])
+                outputs.append(_strip_latency(
+                    await syncthing_browse_folder(
+                        BrowseFolderInput(folder_id=FOLDER_ID, prefix="docs")
+                    )
+                ))
+        first = outputs[0]
+        for i, o in enumerate(outputs[1:], start=1):
+            assert o == first, f"Non-deterministic on run {i}"
+
+
+class TestSyncthingFolderNeedDeterministic:
+    async def test_byte_equal_n3(self):
+        from syncthing_mcp.tools.folders import syncthing_folder_need
+
+        outputs: list[str] = []
+        for _ in range(3):
+            with respx.mock(base_url=BASE_URL, assert_all_called=False) as router:
+                router.get("/rest/db/need").respond(json={
+                    "page": 1, "perpage": 50,
+                    "progress": [{"n": "a"}],
+                    "queued": [],
+                    "rest": [{"n": "b"}],
+                })
+                outputs.append(_strip_latency(
+                    await syncthing_folder_need(
+                        FolderNeedInput(folder_id=FOLDER_ID, page=1, per_page=50)
+                    )
+                ))
+        first = outputs[0]
+        for i, o in enumerate(outputs[1:], start=1):
+            assert o == first, f"Non-deterministic on run {i}"
+
+
+class TestSyncthingRemoteNeedDeterministic:
+    async def test_byte_equal_n3(self):
+        from syncthing_mcp.tools.folders import syncthing_remote_need
+
+        outputs: list[str] = []
+        for _ in range(3):
+            with respx.mock(base_url=BASE_URL, assert_all_called=False) as router:
+                router.get("/rest/db/remoteneed").respond(json={
+                    "page": 1, "perpage": 50,
+                    "progress": [],
+                    "queued": [{"q": 1}],
+                    "rest": [],
+                })
+                outputs.append(_strip_latency(
+                    await syncthing_remote_need(
+                        RemoteNeedInput(
+                            folder_id=FOLDER_ID, device_id=DEVICE_ID_REMOTE,
+                            page=1, per_page=50,
+                        )
+                    )
+                ))
+        first = outputs[0]
+        for i, o in enumerate(outputs[1:], start=1):
+            assert o == first, f"Non-deterministic on run {i}"

@@ -389,19 +389,57 @@ async def syncthing_scan_folder(params: FolderWriteParams) -> str:
     },
 )
 async def syncthing_folder_errors(params: FolderReadParams) -> str:
-    """Current sync errors for a specific folder."""
+    """Current sync errors for a specific folder.
+
+    Accepts DD-278 ``scope=`` filter as a membership precondition. When
+    ``scope`` is set and configured, ``folder_id`` must be in the scoped
+    folder set; otherwise the call refuses with a single-line error and
+    ``_meta.redactions=["folder_outside_scope"]``.
+    """
+    start = time.perf_counter()
     try:
+        scope_set, redactions = _resolve_scope_folders(params.scope, params.instance)
+        filtered_by: list[str] = []
+        if params.scope is not None:
+            filtered_by.append(f"scope={params.scope}")
+
+        if scope_set is not None and params.folder_id not in scope_set:
+            error_payload = fmt(
+                {"error": f"folder_id '{params.folder_id}' not in scope={params.scope} folder set"},
+                concise=params.concise,
+            )
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            return append_meta(
+                error_payload,
+                matched_total=0,
+                returned=0,
+                filtered_by=filtered_by,
+                redactions=[*redactions, "folder_outside_scope"],
+                latency_ms=latency_ms,
+            )
+
+        filtered_by.append(f"folder={params.folder_id}")
+
         client = get_instance(params.instance)
         errors = await client._get(
             "/rest/folder/errors", params={"folder": params.folder_id}
         )
         error_list = errors.get("errors", []) or []
-        return truncate(fmt({
+        payload = truncate(fmt({
             "folder": params.folder_id,
             "instance": client.name,
             "count": len(error_list),
             "errors": error_list,
         }, concise=params.concise))
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return append_meta(
+            payload,
+            matched_total=len(error_list),
+            returned=len(error_list),
+            filtered_by=filtered_by,
+            redactions=redactions,
+            latency_ms=latency_ms,
+        )
     except Exception as e:
         return handle_error_global(e)
 
@@ -423,6 +461,7 @@ async def syncthing_folder_errors(params: FolderReadParams) -> str:
 )
 async def syncthing_browse_folder(params: BrowseFolderInput) -> str:
     """Browse folder contents at a path prefix (directory listing from DB)."""
+    start = time.perf_counter()
     try:
         client = get_instance(params.instance)
         query: dict[str, str] = {"folder": params.folder_id}
@@ -431,12 +470,26 @@ async def syncthing_browse_folder(params: BrowseFolderInput) -> str:
         if params.levels is not None:
             query["levels"] = str(params.levels)
         result = await client._get("/rest/db/browse", params=query)
-        return truncate(fmt({
+        entries_count = len(result) if isinstance(result, list) else 0
+        payload = truncate(fmt({
             "folder": params.folder_id,
             "instance": client.name,
             "prefix": params.prefix or "",
             "entries": result,
         }, concise=params.concise))
+        filtered_by: list[str] = [f"folder={params.folder_id}"]
+        if params.prefix:
+            filtered_by.append(f"prefix={params.prefix}")
+        if params.levels is not None:
+            filtered_by.append(f"levels={params.levels}")
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return append_meta(
+            payload,
+            matched_total=entries_count,
+            returned=entries_count,
+            filtered_by=filtered_by,
+            latency_ms=latency_ms,
+        )
     except Exception as e:
         return handle_error_global(e)
 
@@ -498,7 +551,14 @@ async def syncthing_file_info(params: FileInfoInput) -> str:
     },
 )
 async def syncthing_folder_need(params: FolderNeedInput) -> str:
-    """Files this folder still needs — items that are out of sync locally."""
+    """Files this folder still needs — items that are out of sync locally.
+
+    Pagination: caller advances by incrementing ``page`` (1-based) with the
+    same ``per_page`` to fetch the next slice; upstream Syncthing exposes no
+    cursor token. ``_meta.next_cursor`` is omitted at v1 per DD-338 Phase C
+    Wave 2 OQ-4.
+    """
+    start = time.perf_counter()
     try:
         client = get_instance(params.instance)
         result = await client._get(
@@ -509,15 +569,32 @@ async def syncthing_folder_need(params: FolderNeedInput) -> str:
                 "perpage": str(params.per_page),
             },
         )
-        return truncate(fmt({
+        progress = result.get("progress", []) or []
+        queued = result.get("queued", []) or []
+        rest = result.get("rest", []) or []
+        returned_count = len(progress) + len(queued) + len(rest)
+        payload = truncate(fmt({
             "folder": params.folder_id,
             "instance": client.name,
             "page": result.get("page", params.page),
             "perpage": result.get("perpage", params.per_page),
-            "progress": result.get("progress", []),
-            "queued": result.get("queued", []),
-            "rest": result.get("rest", []),
+            "progress": progress,
+            "queued": queued,
+            "rest": rest,
         }, concise=params.concise))
+        filtered_by: list[str] = [
+            f"folder={params.folder_id}",
+            f"page={params.page}",
+            f"perpage={params.per_page}",
+        ]
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return append_meta(
+            payload,
+            matched_total=returned_count,
+            returned=returned_count,
+            filtered_by=filtered_by,
+            latency_ms=latency_ms,
+        )
     except Exception as e:
         return handle_error_global(e)
 
@@ -534,7 +611,14 @@ async def syncthing_folder_need(params: FolderNeedInput) -> str:
 )
 async def syncthing_remote_need(params: RemoteNeedInput) -> str:
     """Files a remote device still needs from us for a specific folder.
-    Useful for debugging why sync to a device is incomplete."""
+    Useful for debugging why sync to a device is incomplete.
+
+    Pagination: caller advances by incrementing ``page`` (1-based) with the
+    same ``per_page`` to fetch the next slice; upstream Syncthing exposes no
+    cursor token. ``_meta.next_cursor`` is omitted at v1 per DD-338 Phase C
+    Wave 2 OQ-4.
+    """
+    start = time.perf_counter()
     try:
         client = get_instance(params.instance)
         result = await client._get(
@@ -546,16 +630,34 @@ async def syncthing_remote_need(params: RemoteNeedInput) -> str:
                 "perpage": str(params.per_page),
             },
         )
-        return truncate(fmt({
+        progress = result.get("progress", []) or []
+        queued = result.get("queued", []) or []
+        rest = result.get("rest", []) or []
+        returned_count = len(progress) + len(queued) + len(rest)
+        payload = truncate(fmt({
             "folder": params.folder_id,
             "device": params.device_id[:8],
             "instance": client.name,
             "page": result.get("page", params.page),
             "perpage": result.get("perpage", params.per_page),
-            "progress": result.get("progress", []),
-            "queued": result.get("queued", []),
-            "rest": result.get("rest", []),
+            "progress": progress,
+            "queued": queued,
+            "rest": rest,
         }, concise=params.concise))
+        filtered_by: list[str] = [
+            f"device={params.device_id}",
+            f"folder={params.folder_id}",
+            f"page={params.page}",
+            f"perpage={params.per_page}",
+        ]
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return append_meta(
+            payload,
+            matched_total=returned_count,
+            returned=returned_count,
+            filtered_by=filtered_by,
+            latency_ms=latency_ms,
+        )
     except Exception as e:
         return handle_error_global(e)
 
