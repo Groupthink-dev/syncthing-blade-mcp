@@ -136,7 +136,7 @@ async def syncthing_device_completion(params: DeviceReadParams) -> str:
     },
 )
 async def syncthing_connections(params: ReadParams) -> str:
-    """Current connection details for all devices."""
+    """Current connection details for all devices. Sorted by deviceID ascending."""
     try:
         client = get_instance(params.instance)
         connections = await client._get("/rest/system/connections")
@@ -145,11 +145,17 @@ async def syncthing_connections(params: ReadParams) -> str:
             d["deviceID"]: d.get("name", d["deviceID"][:8])
             for d in config.get("devices", [])
         }
+        # DD-338 B.1.b: canonical sort-before-return on deviceID (dict key) ascending.
+        # Syncthing REST API returns `connections.connections` as a dict keyed by
+        # canonical deviceID (hex string per Syncthing protocol convention).
         result = [
             format_connection(
                 did, conn, devices_map.get(did, did[:8]), concise=params.concise,
             )
-            for did, conn in connections.get("connections", {}).items()
+            for did, conn in sorted(
+                connections.get("connections", {}).items(),
+                key=lambda kv: kv[0],
+            )
         ]
         return fmt(result, concise=params.concise)
     except Exception as e:
