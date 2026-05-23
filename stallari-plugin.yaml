@@ -99,3 +99,12 @@ env:
 conformance:
   required: "38"
   last_tested: "2026-04-21"
+
+# DD-338 A.2.dom.c — domain-hint pattern block. Empty by default; users
+# layer their own patterns via the Stallari Settings → Blade Domain Hints
+# editor, which writes to ``<state-root>/blade-config/syncthing-blade-mcp/
+# config.yaml``. The harness merges that file at dispatch time; this block
+# documents the pack-side contract (presence ⇒ blade participates in
+# per-record domain attribution).
+blade_domain_hint_patterns:
+  patterns: []

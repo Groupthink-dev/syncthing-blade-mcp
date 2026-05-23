@@ -13,7 +13,7 @@ from syncthing_mcp.formatters import (
 )
 from syncthing_mcp.models import DeviceReadParams, ReadParams, _resolve_scope_folders
 from syncthing_mcp.registry import get_instance, handle_error_global
-from syncthing_mcp.server import mcp
+from syncthing_mcp.server import compute_domain_hints_for_records, mcp
 
 
 @mcp.tool(
@@ -72,6 +72,10 @@ async def syncthing_list_devices(params: ReadParams) -> str:
             )
             for dev in devices
         ]
+        # DD-338 A.2.dom.c — apply domain_hint patterns to raw device records
+        # (the formatter truncates deviceID in concise mode; use the source
+        # records so projector sees full deviceID + name + addresses).
+        domain_hints = compute_domain_hints_for_records(devices) or None
         payload = fmt(result, concise=params.concise)
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
@@ -81,6 +85,7 @@ async def syncthing_list_devices(params: ReadParams) -> str:
             filtered_by=filtered_by,
             redactions=redactions,
             latency_ms=latency_ms,
+            domain_hints=domain_hints,
         )
     except Exception as e:
         return handle_error_global(e)

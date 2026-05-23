@@ -52,21 +52,28 @@ def meta_envelope(
     filtered_by: list[str] | None = None,
     redactions: list[str] | None = None,
     latency_ms: int,
+    domain_hints: dict[str, str] | None = None,
 ) -> str:
     """Render the canonical JSON-tail _meta envelope line.
 
     Returns the literal line ``_meta: {"matched_total": ..., ...}`` — caller
     is responsible for joining it to the payload with ``\\n\\n``.
+
+    DD-338 A.2.dom.c — when ``domain_hints`` is non-empty, an additional
+    ``domain_hints: {record_id: domain}`` entry is emitted. Empty / None ⇒
+    key omitted entirely (Convention #22 graceful degradation).
     """
     fb = sorted(filtered_by) if filtered_by else []
     rd = list(redactions) if redactions else []
-    payload = {
+    payload: dict[str, Any] = {
         "matched_total": matched_total,
         "returned": returned,
         "filtered_by": fb,
         "redactions": rd,
         "latency_ms": latency_ms,
     }
+    if domain_hints:
+        payload["domain_hints"] = domain_hints
     return "_meta: " + json.dumps(payload, separators=(",", ":"))
 
 
@@ -78,6 +85,7 @@ def append_meta(
     filtered_by: list[str] | None = None,
     redactions: list[str] | None = None,
     latency_ms: int,
+    domain_hints: dict[str, str] | None = None,
 ) -> str:
     """Append the _meta envelope tail line to a serialized payload."""
     return payload + "\n\n" + meta_envelope(
@@ -86,6 +94,7 @@ def append_meta(
         filtered_by=filtered_by,
         redactions=redactions,
         latency_ms=latency_ms,
+        domain_hints=domain_hints,
     )
 
 
