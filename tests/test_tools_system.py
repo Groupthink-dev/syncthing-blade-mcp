@@ -18,6 +18,7 @@ from tests.conftest import (
     make_db_status,
     make_system_status,
     make_version,
+    split_meta,
 )
 
 
@@ -81,8 +82,13 @@ class TestRecentChanges:
         mock_api.get("/rest/events").respond(json=[
             {"id": 1, "type": "LocalChangeDetected", "data": {"path": "file.txt"}}
         ])
-        result = json.loads(await syncthing_recent_changes(EmptyInput()))
+        payload, meta = split_meta(await syncthing_recent_changes(EmptyInput()))
+        result = json.loads(payload)
         assert result["count"] == 1
+        assert meta["matched_total"] == 1
+        assert meta["returned"] == 1
+        assert meta["filtered_by"] == []
+        assert meta["redactions"] == []
 
 
 class TestRestartRequired:

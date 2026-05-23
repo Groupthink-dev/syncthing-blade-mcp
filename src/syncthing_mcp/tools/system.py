@@ -1,11 +1,12 @@
 """System status, health, errors, log, restart, and upgrade tools."""
 
+import time
 from typing import Any
 
 import httpx
 
-from syncthing_mcp.formatters import fmt, format_bytes, truncate
-from syncthing_mcp.models import ReadParams, WriteParams
+from syncthing_mcp.formatters import append_meta, fmt, format_bytes, truncate
+from syncthing_mcp.models import ReadParams, WriteParams, _resolve_scope_folders
 from syncthing_mcp.registry import get_instance, handle_error_global
 from syncthing_mcp.server import mcp
 
@@ -138,10 +139,21 @@ async def syncthing_system_log(params: ReadParams) -> str:
     },
 )
 async def syncthing_recent_changes(params: ReadParams) -> str:
-    """Recent file change events (local and remote) across all folders."""
+    """Recent file change events (local and remote) across all folders.
+
+    DD-338 A.2 — accepts ``scope=work|personal|family|home|infrastructure``
+    mapped to ``SYNCTHING_<SCOPE>_FOLDERS[_<INSTANCE>]`` env var; filters the
+    event stream to events whose ``data.folderID`` is in the scoped folder
+    set via the A.1 ``_resolve_scope_folders`` substrate. ``scope=public``
+    raises. Events with missing/empty ``folderID`` are filtered out when
+    a scope filter is active (system-level events do not partition by
+    folder scope).
+    """
+    start = time.perf_counter()
     try:
+        scope_set, redactions = _resolve_scope_folders(params.scope, params.instance)
         client = get_instance(params.instance)
-        events = await client._get(
+        events_raw = await client._get(
             "/rest/events",
             params={
                 "events": "LocalChangeDetected,RemoteChangeDetected",
@@ -149,8 +161,16 @@ async def syncthing_recent_changes(params: ReadParams) -> str:
                 "timeout": "0",
             },
         )
-        if not isinstance(events, list):
-            events = []
+        if not isinstance(events_raw, list):
+            events_raw = []
+        matched_total = len(events_raw)
+        filtered_by: list[str] = []
+        if scope_set is not None:
+            events_raw = [
+                e for e in events_raw
+                if (e.get("data", {}).get("folderID") or "") in scope_set
+            ]
+            filtered_by.append(f"scope={params.scope}")
         if params.concise:
             events = [
                 {
@@ -159,14 +179,25 @@ async def syncthing_recent_changes(params: ReadParams) -> str:
                     "path": e.get("data", {}).get("path", ""),
                     "action": e.get("data", {}).get("action", ""),
                 }
-                for e in events
+                for e in events_raw
             ]
+        else:
+            events = events_raw
         data: dict[str, Any] = {
             "instance": client.name,
             "count": len(events),
             "events": events,
         }
-        return truncate(fmt(data, concise=params.concise))
+        payload = truncate(fmt(data, concise=params.concise))
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return append_meta(
+            payload,
+            matched_total=matched_total,
+            returned=len(events),
+            filtered_by=filtered_by,
+            redactions=redactions,
+            latency_ms=latency_ms,
+        )
     except Exception as e:
         return handle_error_global(e)
 
