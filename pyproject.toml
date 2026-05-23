@@ -1,6 +1,6 @@
 [project]
 name = "syncthing-blade-mcp"
-version = "0.5.0"
+version = "0.6.0"
 description = "MCP server for Syncthing — token-efficient replication management, multi-instance, safe disk-space reclamation."
 requires-python = ">=3.11"
 dependencies = [
@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "uvicorn>=0.30.0",
     "starlette>=0.37.0",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]

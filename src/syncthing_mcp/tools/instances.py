@@ -1,15 +1,16 @@
 """Tools for instance management and listing folders (config-level)."""
 
+import time
 from typing import Any
 
-from syncthing_mcp.formatters import fmt, format_folder
+from syncthing_mcp.formatters import append_meta, fmt, format_folder
 from syncthing_mcp.models import ReadParams
 from syncthing_mcp.registry import (
     get_all_instances,
     get_instance,
     handle_error_global,
 )
-from syncthing_mcp.server import mcp
+from syncthing_mcp.server import compute_domain_hints_for_records, mcp
 
 
 @mcp.tool(
@@ -63,7 +64,13 @@ async def syncthing_list_instances(params: ReadParams) -> str:
     },
 )
 async def syncthing_list_folders(params: ReadParams) -> str:
-    """All configured folders with labels, types, and device counts."""
+    """All configured folders with labels, types, and device counts.
+
+    DD-338 A.2.dom.c — emits per-record ``domain_hints`` in the ``_meta``
+    envelope when the user has configured matching patterns via the
+    BladeConfigStore.
+    """
+    start = time.perf_counter()
     try:
         client = get_instance(params.instance)
         config = await client._get("/rest/config")
@@ -89,6 +96,20 @@ async def syncthing_list_folders(params: ReadParams) -> str:
                     "paused": f.get("paused", False),
                     "sharedWith": shared,
                 })
-        return fmt(result, concise=params.concise)
+        # Project domain hints from raw config records — they carry the
+        # full source-of-truth shape (`id`, `label`, `path`, `type`) the
+        # projector expects, even when ``concise`` collapses the output.
+        domain_hints = compute_domain_hints_for_records(folders) or None
+        payload = fmt(result, concise=params.concise)
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return append_meta(
+            payload,
+            matched_total=len(folders),
+            returned=len(result),
+            filtered_by=[],
+            redactions=[],
+            latency_ms=latency_ms,
+            domain_hints=domain_hints,
+        )
     except Exception as e:
         return handle_error_global(e)
