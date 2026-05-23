@@ -9,6 +9,7 @@ from syncthing_mcp.formatters import (
     format_bytes,
     format_connection,
     format_device,
+    meta_envelope,
     truncate,
 )
 from syncthing_mcp.models import DeviceReadParams, ReadParams, _resolve_scope_folders
@@ -80,12 +81,14 @@ async def syncthing_list_devices(params: ReadParams) -> str:
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
             payload,
-            matched_total=matched_total,
-            returned=len(result),
-            filtered_by=filtered_by,
-            redactions=redactions,
-            latency_ms=latency_ms,
-            domain_hints=domain_hints,
+            meta_envelope(
+                matched_total=matched_total,
+                returned=len(result),
+                filtered_by=filtered_by,
+                redactions=redactions,
+                latency_ms=latency_ms,
+                domain_hints=domain_hints,
+            ),
         )
     except Exception as e:
         return handle_error_global(e)

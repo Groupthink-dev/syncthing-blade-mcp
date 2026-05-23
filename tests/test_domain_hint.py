@@ -1,40 +1,21 @@
-"""DD-338 A.2.dom.c — domain_hint pattern engine tests.
+"""DD-338 A.2.dom.c — domain_hint pattern engine smoke-tests.
 
-Tests the pure engine (Pattern, compute_domain_hint, load_patterns_from_yaml)
-plus a local copy of the Syncthing field projector so the test file doesn't
-trigger FastMCP server boot via ``syncthing_mcp.server`` import.
+DD-338 Phase E.python — the pattern engine moved from the local
+``syncthing_mcp.domain_hint`` module to the canonical
+``stallari_mcp_helpers`` package. These tests now exercise the lib's
+public surface and serve as a lightweight blade-side smoke-test
+confirming the lib resolves the record shapes this blade emits
+(folders + devices) correctly. The lib's own test suite is the
+authoritative coverage layer.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
-from syncthing_mcp.domain_hint import (
+from stallari_mcp_helpers import (
     Pattern,
     compute_domain_hint,
     load_patterns_from_yaml,
 )
-
-
-# ---------------------------------------------------------------------------
-# Local copy of _syncthing_field_projector — mirrors server.py to avoid
-# importing the FastMCP server module (which spins up registry on import).
-# ---------------------------------------------------------------------------
-
-
-def _projector(record: dict[str, Any], field: str) -> Any:
-    if not isinstance(record, dict):
-        return None
-    if field in {"id", "label", "path", "type"}:
-        return record.get(field)
-    if field == "deviceID":
-        return record.get("deviceID")
-    if field == "name":
-        return record.get("name")
-    if field == "addresses":
-        v = record.get("addresses")
-        return v if isinstance(v, list) else None
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +26,7 @@ def _projector(record: dict[str, Any], field: str) -> Any:
 def test_empty_patterns_returns_none() -> None:
     """No patterns ⇒ no domain hint regardless of record shape."""
     record = {"id": "test", "label": "Test", "path": "/Family/photos"}
-    assert compute_domain_hint(record, [], _projector) is None
+    assert compute_domain_hint(record, []) is None
 
 
 def test_single_pattern_match_folder() -> None:
@@ -57,7 +38,7 @@ def test_single_pattern_match_folder() -> None:
         "type": "sendreceive",
     }
     patterns = [Pattern(field="path", op="contains", value="/Family/", domain="family")]
-    assert compute_domain_hint(record, patterns, _projector) == "family"
+    assert compute_domain_hint(record, patterns) == "family"
 
 
 def test_first_match_wins() -> None:
@@ -72,21 +53,21 @@ def test_first_match_wins() -> None:
         Pattern(field="path", op="contains", value="/work/", domain="work"),
         Pattern(field="path", op="contains", value="/Family/", domain="family"),
     ]
-    assert compute_domain_hint(record, patterns, _projector) == "work"
+    assert compute_domain_hint(record, patterns) == "work"
 
 
 def test_glob_wildcard_on_label() -> None:
     """fnmatch glob op handles wildcard label matches."""
     record = {"id": "f1", "label": "Work Notes", "path": "/x"}
     patterns = [Pattern(field="label", op="glob", value="Work*", domain="work")]
-    assert compute_domain_hint(record, patterns, _projector) == "work"
+    assert compute_domain_hint(record, patterns) == "work"
 
 
-def test_projector_returns_none_for_unknown_field() -> None:
-    """Unknown projector field ⇒ no match, no crash."""
+def test_unknown_field_returns_none() -> None:
+    """Unknown field path ⇒ no match, no crash."""
     record = {"id": "f1", "label": "L", "path": "/x"}
     patterns = [Pattern(field="nonsense", op="equals", value="x", domain="d")]
-    assert compute_domain_hint(record, patterns, _projector) is None
+    assert compute_domain_hint(record, patterns) is None
 
 
 def test_device_record_addresses_list_match() -> None:
@@ -97,14 +78,14 @@ def test_device_record_addresses_list_match() -> None:
         "addresses": ["dynamic", "tcp://10.0.0.5:22000"],
     }
     patterns = [Pattern(field="addresses", op="contains", value="10.0.0.5", domain="ops")]
-    assert compute_domain_hint(record, patterns, _projector) == "ops"
+    assert compute_domain_hint(record, patterns) == "ops"
 
 
 def test_device_record_equals_deviceid() -> None:
     """Exact deviceID match emits the configured domain."""
     record = {"deviceID": "ABCDEFG-XYZ", "name": "h"}
     patterns = [Pattern(field="deviceID", op="equals", value="ABCDEFG-XYZ", domain="ops")]
-    assert compute_domain_hint(record, patterns, _projector) == "ops"
+    assert compute_domain_hint(record, patterns) == "ops"
 
 
 # ---------------------------------------------------------------------------

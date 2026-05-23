@@ -491,8 +491,10 @@ class TestFolderNeed:
         assert isinstance(meta["returned"], int)
         assert isinstance(meta["latency_ms"], int)
         assert meta["returned"] == 3
-        # next_cursor must NOT be present per OQ-4 (v1)
-        assert "next_cursor" not in meta
+        # DD-338 Phase E.python — canonical lib always emits `next_cursor`
+        # (as `null` when caller passes None / omits the kwarg); semantic
+        # OQ-4 invariant unchanged (no cursor surfaced to callers in v1).
+        assert meta["next_cursor"] is None
 
     # DD-338 Phase C Wave 2 — filtered_by content
     async def test_filtered_by_contains_pagination(self, mock_api):
@@ -549,7 +551,9 @@ class TestRemoteNeed:
         assert isinstance(meta["returned"], int)
         assert isinstance(meta["latency_ms"], int)
         assert meta["returned"] == 3
-        assert "next_cursor" not in meta
+        # DD-338 Phase E.python — canonical lib always emits `next_cursor`
+        # (as `null` when caller passes None / omits the kwarg).
+        assert meta["next_cursor"] is None
 
     # DD-338 Phase C Wave 2 — filtered_by content
     async def test_filtered_by_contains_device_and_pagination(self, mock_api):
