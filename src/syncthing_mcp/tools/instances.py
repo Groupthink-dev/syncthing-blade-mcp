@@ -3,7 +3,7 @@
 import time
 from typing import Any
 
-from syncthing_mcp.formatters import append_meta, fmt, format_folder
+from syncthing_mcp.formatters import append_meta, fmt, format_folder, meta_envelope
 from syncthing_mcp.models import ReadParams, _resolve_scope_folders
 from syncthing_mcp.registry import (
     get_all_instances,
@@ -117,12 +117,14 @@ async def syncthing_list_folders(params: ReadParams) -> str:
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
             payload,
-            matched_total=matched_total,
-            returned=len(result),
-            filtered_by=filtered_by,
-            redactions=redactions,
-            latency_ms=latency_ms,
-            domain_hints=domain_hints,
+            meta_envelope(
+                matched_total=matched_total,
+                returned=len(result),
+                filtered_by=filtered_by,
+                redactions=redactions,
+                latency_ms=latency_ms,
+                domain_hints=domain_hints,
+            ),
         )
     except Exception as e:
         return handle_error_global(e)

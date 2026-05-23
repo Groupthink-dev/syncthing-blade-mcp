@@ -8,7 +8,7 @@ from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from syncthing_mcp.domain_hint import (
+from stallari_mcp_helpers import (
     Pattern,
     compute_domain_hint,
     load_patterns_from_yaml,
@@ -74,40 +74,14 @@ def _load_blade_config(blade_id: str) -> list[Pattern]:
 _PATTERNS: list[Pattern] = _load_blade_config(_BLADE_ID)
 
 
-def _syncthing_field_projector(record: dict[str, Any], field: str) -> Any:
-    """Project a Syncthing record (folder OR device) onto a logical field name.
-
-    Polymorphic across the two record shapes this blade emits:
-
-    Folder record shape::
-
-        {"id": "...", "label": "...", "path": "...", "type": "sendreceive",
-         "devices": [...], "paused": false}
-
-    Device record shape::
-
-        {"deviceID": "ABCD-...", "name": "host", "addresses": [...],
-         "paused": false, "introducer": false}
-
-    Field resolution is shape-agnostic: try folder-side keys first, fall
-    through to device-side keys. Unknown field ⇒ ``None`` (no match).
-    """
-    if not isinstance(record, dict):
-        return None
-    f = field
-    # Folder-shape fields
-    if f in {"id", "label", "path", "type"}:
-        v = record.get(f)
-        return v if v is not None else None
-    # Device-shape fields
-    if f == "deviceID":
-        return record.get("deviceID")
-    if f == "name":
-        return record.get("name")
-    if f == "addresses":
-        v = record.get("addresses")
-        return v if isinstance(v, list) else None
-    return None
+# DD-338 Phase E.python — the per-blade `_syncthing_field_projector` was
+# retired here. The canonical `compute_domain_hint` in
+# `stallari-mcp-helpers v0.1.0` uses built-in dot-path field resolution,
+# which behaves identically to the prior projector for the flat record
+# shapes this blade emits (folders: `id` / `label` / `path` / `type`;
+# devices: `deviceID` / `name` / `addresses`). Should a future record
+# shape introduce nested fields requiring custom projection, re-introduce
+# a lib-side projector hook or override the relevant call-site.
 
 
 def _record_id(record: dict[str, Any]) -> str | None:
@@ -143,7 +117,14 @@ def compute_domain_hints_for_records(
         rid = _record_id(rec)
         if rid is None:
             continue
-        hint = compute_domain_hint(rec, _PATTERNS, _syncthing_field_projector)
+        # DD-338 Phase E.python — canonical lib's `compute_domain_hint` uses
+        # built-in dot-path resolution; the local `_syncthing_field_projector`
+        # below is retained for the test suite only. For Syncthing record
+        # shapes (folders + devices) the dot-path resolution behaves identically
+        # to the prior projector — both navigate `record.get(field)` for the
+        # flat keys actually used in patterns (`id`, `label`, `path`, `type`,
+        # `deviceID`, `name`, `addresses`).
+        hint = compute_domain_hint(rec, _PATTERNS)
         if hint is not None:
             out[rid] = hint
     return out

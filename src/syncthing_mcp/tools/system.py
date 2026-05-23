@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from syncthing_mcp.formatters import append_meta, fmt, format_bytes, truncate
+from syncthing_mcp.formatters import append_meta, fmt, format_bytes, meta_envelope, truncate
 from syncthing_mcp.models import ReadParams, WriteParams, _resolve_scope_folders
 from syncthing_mcp.registry import get_instance, handle_error_global
 from syncthing_mcp.server import mcp
@@ -192,11 +192,13 @@ async def syncthing_recent_changes(params: ReadParams) -> str:
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
             payload,
-            matched_total=matched_total,
-            returned=len(events),
-            filtered_by=filtered_by,
-            redactions=redactions,
-            latency_ms=latency_ms,
+            meta_envelope(
+                matched_total=matched_total,
+                returned=len(events),
+                filtered_by=filtered_by,
+                redactions=redactions,
+                latency_ms=latency_ms,
+            ),
         )
     except Exception as e:
         return handle_error_global(e)

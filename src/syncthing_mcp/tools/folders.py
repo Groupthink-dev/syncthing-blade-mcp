@@ -10,6 +10,7 @@ from syncthing_mcp.formatters import (
     format_completion,
     format_folder_status,
     format_replication_entry,
+    meta_envelope,
     truncate,
 )
 from syncthing_mcp.models import (
@@ -65,11 +66,13 @@ async def syncthing_folder_status(params: FolderReadParams) -> str:
             latency_ms = int((time.perf_counter() - start) * 1000)
             return append_meta(
                 error_payload,
-                matched_total=0,
-                returned=0,
-                filtered_by=filtered_by,
-                redactions=[*redactions, "folder_outside_scope"],
-                latency_ms=latency_ms,
+                meta_envelope(
+                    matched_total=0,
+                    returned=0,
+                    filtered_by=filtered_by,
+                    redactions=[*redactions, 'folder_outside_scope'],
+                    latency_ms=latency_ms,
+                ),
             )
 
         filtered_by.append(f"folder={params.folder_id}")
@@ -90,11 +93,13 @@ async def syncthing_folder_status(params: FolderReadParams) -> str:
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
             payload,
-            matched_total=1,
-            returned=1,
-            filtered_by=filtered_by,
-            redactions=redactions,
-            latency_ms=latency_ms,
+            meta_envelope(
+                matched_total=1,
+                returned=1,
+                filtered_by=filtered_by,
+                redactions=redactions,
+                latency_ms=latency_ms,
+            ),
         )
     except Exception as e:
         return handle_error_global(e)
@@ -282,11 +287,13 @@ async def syncthing_replication_report(params: ReadParams) -> str:
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
             payload,
-            matched_total=matched_total,
-            returned=len(report),
-            filtered_by=filtered_by,
-            redactions=redactions,
-            latency_ms=latency_ms,
+            meta_envelope(
+                matched_total=matched_total,
+                returned=len(report),
+                filtered_by=filtered_by,
+                redactions=redactions,
+                latency_ms=latency_ms,
+            ),
         )
     except Exception as e:
         return handle_error_global(e)
@@ -411,11 +418,13 @@ async def syncthing_folder_errors(params: FolderReadParams) -> str:
             latency_ms = int((time.perf_counter() - start) * 1000)
             return append_meta(
                 error_payload,
-                matched_total=0,
-                returned=0,
-                filtered_by=filtered_by,
-                redactions=[*redactions, "folder_outside_scope"],
-                latency_ms=latency_ms,
+                meta_envelope(
+                    matched_total=0,
+                    returned=0,
+                    filtered_by=filtered_by,
+                    redactions=[*redactions, 'folder_outside_scope'],
+                    latency_ms=latency_ms,
+                ),
             )
 
         filtered_by.append(f"folder={params.folder_id}")
@@ -434,11 +443,13 @@ async def syncthing_folder_errors(params: FolderReadParams) -> str:
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
             payload,
-            matched_total=len(error_list),
-            returned=len(error_list),
-            filtered_by=filtered_by,
-            redactions=redactions,
-            latency_ms=latency_ms,
+            meta_envelope(
+                matched_total=len(error_list),
+                returned=len(error_list),
+                filtered_by=filtered_by,
+                redactions=redactions,
+                latency_ms=latency_ms,
+            ),
         )
     except Exception as e:
         return handle_error_global(e)
@@ -485,10 +496,12 @@ async def syncthing_browse_folder(params: BrowseFolderInput) -> str:
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
             payload,
-            matched_total=entries_count,
-            returned=entries_count,
-            filtered_by=filtered_by,
-            latency_ms=latency_ms,
+            meta_envelope(
+                matched_total=entries_count,
+                returned=entries_count,
+                filtered_by=filtered_by,
+                latency_ms=latency_ms,
+            ),
         )
     except Exception as e:
         return handle_error_global(e)
@@ -590,10 +603,12 @@ async def syncthing_folder_need(params: FolderNeedInput) -> str:
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
             payload,
-            matched_total=returned_count,
-            returned=returned_count,
-            filtered_by=filtered_by,
-            latency_ms=latency_ms,
+            meta_envelope(
+                matched_total=returned_count,
+                returned=returned_count,
+                filtered_by=filtered_by,
+                latency_ms=latency_ms,
+            ),
         )
     except Exception as e:
         return handle_error_global(e)
@@ -653,10 +668,12 @@ async def syncthing_remote_need(params: RemoteNeedInput) -> str:
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
             payload,
-            matched_total=returned_count,
-            returned=returned_count,
-            filtered_by=filtered_by,
-            latency_ms=latency_ms,
+            meta_envelope(
+                matched_total=returned_count,
+                returned=returned_count,
+                filtered_by=filtered_by,
+                latency_ms=latency_ms,
+            ),
         )
     except Exception as e:
         return handle_error_global(e)

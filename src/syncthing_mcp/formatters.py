@@ -12,6 +12,8 @@ import json
 import random
 from typing import Any
 
+from stallari_mcp_helpers import append_meta, meta_envelope
+
 # ---------------------------------------------------------------------------
 #  Constants
 # ---------------------------------------------------------------------------
@@ -33,69 +35,40 @@ def fmt(data: Any, *, concise: bool = True) -> str:
 
 
 # ---------------------------------------------------------------------------
-#  DD-338 Phase A.1 — Track 3 — _meta envelope (JSON tail block)
+#  DD-338 Phase E.python — _meta envelope helpers
 # ---------------------------------------------------------------------------
 #
-#  Architect amendment 2026-05-21 — canonical wire shape is JSON tail block,
-#  not pipe-delimited. Single line appended after \n\n. Assembler regex:
-#      \n\n_meta: (\{.*\})$
-#  Required fields: matched_total, returned, filtered_by, latency_ms.
-#  Optional: redactions, next_cursor, error_notes.
-#  filtered_by is sorted alphabetically for hash reproducibility.
+#  Local `meta_envelope` + `append_meta` were retired in favour of the
+#  canonical implementation in `stallari-mcp-helpers v0.1.0`. The lib API
+#  differs slightly from this blade's prior local helper:
+#
+#  - `meta_envelope(*, matched_total, returned, latency_ms, filtered_by=None,
+#    redactions=None, next_cursor=None, error_notes=None, domain_hints=None)`
+#    — `next_cursor` is a new optional kwarg the blade does not use.
+#  - `append_meta(body, meta_line)` — takes a pre-built `_meta: {...}` line.
+#    Callers must call `meta_envelope(...)` first then pass the result to
+#    `append_meta`. Previously this blade's `append_meta` built the envelope
+#    internally.
+#
+#  Wire-shape change (test fixtures updated for byte-equal pins):
+#  - Field order in the rendered JSON now follows lib convention
+#    (matched_total, returned, latency_ms, filtered_by, redactions,
+#    next_cursor, error_notes?, domain_hints?). The prior local helper
+#    emitted latency_ms last.
+#  - `next_cursor: null` is now always present.
+#  - `redactions` and `filtered_by` continue to be emitted unconditionally
+#    (as `[]` when empty); `error_notes` and `domain_hints` are omitted
+#    when empty.
+#
+#  The lib re-exports preserve the same call names (`meta_envelope`,
+#  `append_meta`) so blade tool modules continue importing them from
+#  `syncthing_mcp.formatters`.
 # ---------------------------------------------------------------------------
 
 
-def meta_envelope(
-    *,
-    matched_total: int,
-    returned: int,
-    filtered_by: list[str] | None = None,
-    redactions: list[str] | None = None,
-    latency_ms: int,
-    domain_hints: dict[str, str] | None = None,
-) -> str:
-    """Render the canonical JSON-tail _meta envelope line.
-
-    Returns the literal line ``_meta: {"matched_total": ..., ...}`` — caller
-    is responsible for joining it to the payload with ``\\n\\n``.
-
-    DD-338 A.2.dom.c — when ``domain_hints`` is non-empty, an additional
-    ``domain_hints: {record_id: domain}`` entry is emitted. Empty / None ⇒
-    key omitted entirely (Convention #22 graceful degradation).
-    """
-    fb = sorted(filtered_by) if filtered_by else []
-    rd = list(redactions) if redactions else []
-    payload: dict[str, Any] = {
-        "matched_total": matched_total,
-        "returned": returned,
-        "filtered_by": fb,
-        "redactions": rd,
-        "latency_ms": latency_ms,
-    }
-    if domain_hints:
-        payload["domain_hints"] = domain_hints
-    return "_meta: " + json.dumps(payload, separators=(",", ":"))
-
-
-def append_meta(
-    payload: str,
-    *,
-    matched_total: int,
-    returned: int,
-    filtered_by: list[str] | None = None,
-    redactions: list[str] | None = None,
-    latency_ms: int,
-    domain_hints: dict[str, str] | None = None,
-) -> str:
-    """Append the _meta envelope tail line to a serialized payload."""
-    return payload + "\n\n" + meta_envelope(
-        matched_total=matched_total,
-        returned=returned,
-        filtered_by=filtered_by,
-        redactions=redactions,
-        latency_ms=latency_ms,
-        domain_hints=domain_hints,
-    )
+# Re-export `meta_envelope` + `append_meta` from the lib so existing imports
+# from `syncthing_mcp.formatters` continue to resolve.
+_ = (append_meta, meta_envelope)  # explicit re-export marker; suppresses lint
 
 
 def short_id(device_id: str) -> str:
