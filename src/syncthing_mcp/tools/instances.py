@@ -4,7 +4,7 @@ import time
 from typing import Any
 
 from syncthing_mcp.formatters import append_meta, fmt, format_folder
-from syncthing_mcp.models import ReadParams
+from syncthing_mcp.models import ReadParams, _resolve_scope_folders
 from syncthing_mcp.registry import (
     get_all_instances,
     get_instance,
@@ -66,15 +66,28 @@ async def syncthing_list_instances(params: ReadParams) -> str:
 async def syncthing_list_folders(params: ReadParams) -> str:
     """All configured folders with labels, types, and device counts.
 
+    DD-338 A.2 — accepts ``scope=work|personal|family|home|infrastructure``
+    mapped to ``SYNCTHING_<SCOPE>_FOLDERS[_<INSTANCE>]`` env var; filters
+    ``config.folders`` to the resolved folder-ID set via the A.1
+    ``_resolve_scope_folders`` substrate. ``scope=public`` raises.
+
     DD-338 A.2.dom.c — emits per-record ``domain_hints`` in the ``_meta``
     envelope when the user has configured matching patterns via the
     BladeConfigStore.
     """
     start = time.perf_counter()
     try:
+        scope_set, redactions = _resolve_scope_folders(params.scope, params.instance)
         client = get_instance(params.instance)
         config = await client._get("/rest/config")
-        folders = config.get("folders", [])
+        all_folders = config.get("folders", [])
+        matched_total = len(all_folders)
+        filtered_by: list[str] = []
+        if scope_set is not None:
+            folders = [f for f in all_folders if f.get("id") in scope_set]
+            filtered_by.append(f"scope={params.scope}")
+        else:
+            folders = all_folders
         if params.concise:
             result = [format_folder(f, concise=True) for f in folders]
         else:
@@ -104,10 +117,10 @@ async def syncthing_list_folders(params: ReadParams) -> str:
         latency_ms = int((time.perf_counter() - start) * 1000)
         return append_meta(
             payload,
-            matched_total=len(folders),
+            matched_total=matched_total,
             returned=len(result),
-            filtered_by=[],
-            redactions=[],
+            filtered_by=filtered_by,
+            redactions=redactions,
             latency_ms=latency_ms,
             domain_hints=domain_hints,
         )
