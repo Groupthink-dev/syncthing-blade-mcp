@@ -58,6 +58,28 @@ def _resolve_scope_folders(
 
 
 # ---------------------------------------------------------------------------
+#  Write gate (AUD-04-02 / DD-385 Phase W)
+# ---------------------------------------------------------------------------
+
+
+def is_write_enabled() -> bool:
+    """Check whether write operations are enabled."""
+    return os.environ.get("SYNCTHING_WRITE_ENABLED", "").strip().lower() == "true"
+
+
+def require_write() -> str | None:
+    """Return an error message if writes are disabled, else None."""
+    if is_write_enabled():
+        return None
+    return "Write operations are disabled. Set SYNCTHING_WRITE_ENABLED=true to enable."
+
+
+_CONFIRM_DESCRIPTION = (
+    "Must be true to confirm — this operation is destructive or disruptive."
+)
+
+
+# ---------------------------------------------------------------------------
 #  Read-oriented base models (include concise toggle for token efficiency)
 # ---------------------------------------------------------------------------
 
@@ -144,6 +166,18 @@ class DeviceWriteParams(WriteParams):
     )
 
 
+class ConfirmWriteParams(WriteParams):
+    """Write tool requiring explicit confirmation (destructive/disruptive)."""
+
+    confirm: bool = Field(False, description=_CONFIRM_DESCRIPTION)
+
+
+class ConfirmFolderWriteParams(FolderWriteParams):
+    """Folder write tool requiring explicit confirmation (destructive/disruptive)."""
+
+    confirm: bool = Field(False, description=_CONFIRM_DESCRIPTION)
+
+
 # ---------------------------------------------------------------------------
 #  Specialised input models
 # ---------------------------------------------------------------------------
@@ -158,6 +192,7 @@ class AcceptDeviceInput(WriteParams):
         None,
         description="Friendly name to assign. If omitted, uses the name from the pending request.",
     )
+    confirm: bool = Field(False, description=_CONFIRM_DESCRIPTION)
 
 
 class AcceptFolderInput(WriteParams):
@@ -169,6 +204,7 @@ class AcceptFolderInput(WriteParams):
         None,
         description="Local path for the folder. If omitted, uses Syncthing's default path.",
     )
+    confirm: bool = Field(False, description=_CONFIRM_DESCRIPTION)
 
 
 class RejectFolderInput(WriteParams):
@@ -189,6 +225,7 @@ class SetIgnoresInput(WriteParams):
         ...,
         description="List of ignore patterns (e.g. ['*.tmp', '.DS_Store', '// #include'])",
     )
+    confirm: bool = Field(False, description=_CONFIRM_DESCRIPTION)
 
 
 class SetDefaultIgnoresInput(WriteParams):

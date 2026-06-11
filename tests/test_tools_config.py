@@ -49,7 +49,7 @@ class TestPendingFolders:
 
 
 class TestAcceptDevice:
-    async def test_accept(self, mock_api):
+    async def test_accept(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.config import syncthing_accept_device
 
         mock_api.get("/rest/cluster/pending/devices").respond(json={
@@ -60,14 +60,14 @@ class TestAcceptDevice:
         })
         mock_api.post("/rest/config/devices").respond(status_code=200, content=b"")
         result = json.loads(await syncthing_accept_device(
-            AcceptDeviceInput(device_id=DEVICE_ID_REMOTE2)
+            AcceptDeviceInput(device_id=DEVICE_ID_REMOTE2, confirm=True)
         ))
         assert result["status"] == "accepted"
         assert result["name"] == "new-device"
 
 
 class TestRejectDevice:
-    async def test_reject(self, mock_api):
+    async def test_reject(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.config import syncthing_reject_device
 
         mock_api.delete("/rest/cluster/pending/devices").respond(status_code=200, content=b"")
@@ -78,7 +78,7 @@ class TestRejectDevice:
 
 
 class TestAcceptFolder:
-    async def test_accept(self, mock_api):
+    async def test_accept(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.config import syncthing_accept_folder
 
         mock_api.get("/rest/cluster/pending/folders").respond(json={
@@ -94,22 +94,22 @@ class TestAcceptFolder:
         })
         mock_api.post("/rest/config/folders").respond(status_code=200, content=b"")
         result = json.loads(await syncthing_accept_folder(
-            AcceptFolderInput(folder_id="new-folder")
+            AcceptFolderInput(folder_id="new-folder", confirm=True)
         ))
         assert result["status"] == "accepted"
         assert result["label"] == "Shared Docs"
 
-    async def test_not_pending(self, mock_api):
+    async def test_not_pending(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.config import syncthing_accept_folder
 
         result = json.loads(await syncthing_accept_folder(
-            AcceptFolderInput(folder_id="nonexistent")
+            AcceptFolderInput(folder_id="nonexistent", confirm=True)
         ))
         assert "error" in result
 
 
 class TestRejectFolder:
-    async def test_reject(self, mock_api):
+    async def test_reject(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.config import syncthing_reject_folder
 
         mock_api.delete("/rest/cluster/pending/folders").respond(status_code=200, content=b"")
@@ -132,12 +132,12 @@ class TestGetIgnores:
 
 
 class TestSetIgnores:
-    async def test_set(self, mock_api):
+    async def test_set(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.config import syncthing_set_ignores
 
         mock_api.post("/rest/db/ignores").respond(status_code=200, content=b"")
         result = json.loads(await syncthing_set_ignores(
-            SetIgnoresInput(folder_id=FOLDER_ID, patterns=["*.log", "node_modules"])
+            SetIgnoresInput(folder_id=FOLDER_ID, patterns=["*.log", "node_modules"], confirm=True)
         ))
         assert result["status"] == "updated"
         assert result["count"] == 2
@@ -153,7 +153,7 @@ class TestGetDefaultIgnores:
 
 
 class TestSetDefaultIgnores:
-    async def test_set(self, mock_api):
+    async def test_set(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.config import syncthing_set_default_ignores
 
         mock_api.put("/rest/config/defaults/ignores").respond(

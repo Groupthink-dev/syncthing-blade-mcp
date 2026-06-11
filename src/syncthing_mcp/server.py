@@ -148,6 +148,15 @@ async def app_lifespan(app):
 
 mcp = FastMCP(
     "syncthing_mcp",
+    instructions=(
+        "Syncthing replication operations across one or more instances. "
+        "Monitor folders, devices, and sync health; manage pending devices/"
+        "folders, ignore patterns, and conflict resolution. Multi-instance: "
+        "pass instance= to target a specific node. Write operations require "
+        "SYNCTHING_WRITE_ENABLED=true. Destructive/disruptive operations "
+        "(override, revert, restart, accept device/folder, replace ignores) "
+        "also require confirm=true."
+    ),
     lifespan=app_lifespan,
     stateless_http=True,
     json_response=True,

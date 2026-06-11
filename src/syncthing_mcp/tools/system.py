@@ -6,7 +6,13 @@ from typing import Any
 import httpx
 
 from syncthing_mcp.formatters import append_meta, fmt, format_bytes, meta_envelope, truncate
-from syncthing_mcp.models import ReadParams, WriteParams, _resolve_scope_folders
+from syncthing_mcp.models import (
+    ConfirmWriteParams,
+    ReadParams,
+    WriteParams,
+    _resolve_scope_folders,
+    require_write,
+)
 from syncthing_mcp.registry import get_instance, handle_error_global
 from syncthing_mcp.server import mcp
 
@@ -93,7 +99,11 @@ async def syncthing_system_errors(params: ReadParams) -> str:
     },
 )
 async def syncthing_clear_errors(params: WriteParams) -> str:
-    """Clear the system error log."""
+    """Clear the system error log.
+    Requires SYNCTHING_WRITE_ENABLED=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
     try:
         client = get_instance(params.instance)
         await client._post("/rest/system/error/clear")
@@ -232,13 +242,23 @@ async def syncthing_restart_required(params: ReadParams) -> str:
     annotations={
         "title": "Restart Syncthing",
         "readOnlyHint": False,
-        "destructiveHint": False,
+        "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": False,
     },
 )
-async def syncthing_restart(params: WriteParams) -> str:
-    """Restart the Syncthing service. Temporarily stops all sync activity."""
+async def syncthing_restart(params: ConfirmWriteParams) -> str:
+    """Restart the Syncthing service. Temporarily stops all sync activity.
+    Requires SYNCTHING_WRITE_ENABLED=true and confirm=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
+    if not params.confirm:
+        return fmt({"error": (
+            "Restarting stops the Syncthing daemon and interrupts all active "
+            "sync transfers on this instance until it comes back up. "
+            "Set confirm=true to proceed."
+        )})
     try:
         client = get_instance(params.instance)
         try:

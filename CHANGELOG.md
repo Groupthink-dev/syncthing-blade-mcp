@@ -4,6 +4,26 @@ All notable changes to `syncthing-blade-mcp` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] - 2026-06-11
+
+### Security
+
+- **AUD-04-02 / DD-385 Phase W — write gate + confirm discipline (class baseline).**
+  All 13 mutating tools now require `SYNCTHING_WRITE_ENABLED=true` and refuse
+  with a clear error when the gate is off. Previously every mutating tool
+  (override, revert, restart, accept-device, replace-stignore, …) fired
+  ungated.
+- **`confirm=true` required for destructive/disruptive operations:**
+  `syncthing_override_folder`, `syncthing_revert_folder`, `syncthing_restart`,
+  `syncthing_accept_device`, `syncthing_accept_folder`, `syncthing_set_ignores`.
+  The refusal message explains what the operation would do. These tools are
+  now annotated `destructiveHint: true`.
+
+### Changed
+
+- Server-level MCP instructions now document the write gate and confirm
+  requirements.
+
 ## [0.8.0] - 2026-05-24
 
 ### Changed

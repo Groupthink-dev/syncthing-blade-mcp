@@ -6,7 +6,7 @@ import pytest
 import respx
 from httpx import Response
 
-from syncthing_mcp.models import EmptyInput
+from syncthing_mcp.models import ConfirmWriteParams, EmptyInput
 from syncthing_mcp.registry import reload_instances
 from tests.conftest import (
     BASE_URL,
@@ -59,7 +59,7 @@ class TestSystemErrors:
 
 
 class TestClearErrors:
-    async def test_clear(self, mock_api):
+    async def test_clear(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.system import syncthing_clear_errors
 
         mock_api.post("/rest/system/error/clear").respond(status_code=200, content=b"")
@@ -100,11 +100,11 @@ class TestRestartRequired:
 
 
 class TestRestart:
-    async def test_restart(self, mock_api):
+    async def test_restart(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.system import syncthing_restart
 
         mock_api.post("/rest/system/restart").respond(status_code=200, content=b"")
-        result = json.loads(await syncthing_restart(EmptyInput()))
+        result = json.loads(await syncthing_restart(ConfirmWriteParams(confirm=True)))
         assert result["status"] == "restart_initiated"
 
 

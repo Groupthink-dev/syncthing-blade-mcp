@@ -158,6 +158,12 @@ def single_instance_env(monkeypatch):
 
 
 @pytest.fixture
+def write_enabled_env(monkeypatch):
+    """Enable the AUD-04-02 write gate for tests exercising mutating tools."""
+    monkeypatch.setenv("SYNCTHING_WRITE_ENABLED", "true")
+
+
+@pytest.fixture
 def multi_instance_env(monkeypatch):
     """Set env vars for multi-instance mode."""
     instances = {

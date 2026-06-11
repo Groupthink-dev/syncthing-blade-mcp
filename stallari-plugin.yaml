@@ -76,6 +76,11 @@ setup:
       required: false
       placeholder: '{"name": {"url": "...", "apiKey": "..."}}'
       help: "JSON object for multi-instance mode. Overrides API Key and URL above"
+    - key: SYNCTHING_WRITE_ENABLED
+      label: "Enable Write Operations"
+      required: false
+      placeholder: "true"
+      help: "Set to 'true' to allow mutating tools (pause/resume, accept, restart, override, ignores). Off by default; destructive operations also require confirm=true per call"
 
 install:
   runtime: uv
@@ -95,6 +100,10 @@ env:
     secret: true
     required: false
     description: "JSON object for multi-instance mode (overrides API_KEY/URL)"
+  - name: SYNCTHING_WRITE_ENABLED
+    secret: false
+    required: false
+    description: "Set to 'true' to enable mutating tools; destructive/disruptive operations also require confirm=true (default: writes disabled)"
 
 conformance:
   required: "38"

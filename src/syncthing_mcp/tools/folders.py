@@ -15,6 +15,7 @@ from syncthing_mcp.formatters import (
 )
 from syncthing_mcp.models import (
     BrowseFolderInput,
+    ConfirmFolderWriteParams,
     FileInfoInput,
     FolderNeedInput,
     FolderReadParams,
@@ -22,6 +23,7 @@ from syncthing_mcp.models import (
     ReadParams,
     RemoteNeedInput,
     _resolve_scope_folders,
+    require_write,
 )
 from syncthing_mcp.registry import get_instance, handle_error_global
 from syncthing_mcp.server import mcp
@@ -316,7 +318,11 @@ async def syncthing_replication_report(params: ReadParams) -> str:
 )
 async def syncthing_pause_folder(params: FolderWriteParams) -> str:
     """Pause syncing for a folder. Does NOT delete data — only stops sync
-    so you can safely remove the local copy without propagating deletions."""
+    so you can safely remove the local copy without propagating deletions.
+    Requires SYNCTHING_WRITE_ENABLED=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
     try:
         client = get_instance(params.instance)
         folder_cfg = await client._get(f"/rest/config/folders/{params.folder_id}")
@@ -344,7 +350,11 @@ async def syncthing_pause_folder(params: FolderWriteParams) -> str:
 async def syncthing_resume_folder(params: FolderWriteParams) -> str:
     """Resume syncing for a paused folder. WARNING: if local data was deleted
     while paused, behaviour depends on folder type (sendreceive may propagate
-    deletions; receiveonly will re-download)."""
+    deletions; receiveonly will re-download).
+    Requires SYNCTHING_WRITE_ENABLED=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
     try:
         client = get_instance(params.instance)
         folder_cfg = await client._get(f"/rest/config/folders/{params.folder_id}")
@@ -372,7 +382,11 @@ async def syncthing_resume_folder(params: FolderWriteParams) -> str:
     },
 )
 async def syncthing_scan_folder(params: FolderWriteParams) -> str:
-    """Trigger an immediate rescan of a folder to refresh its status."""
+    """Trigger an immediate rescan of a folder to refresh its status.
+    Requires SYNCTHING_WRITE_ENABLED=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
     try:
         client = get_instance(params.instance)
         await client._post("/rest/db/scan", params={"folder": params.folder_id})
@@ -689,13 +703,23 @@ async def syncthing_remote_need(params: RemoteNeedInput) -> str:
     annotations={
         "title": "Override Remote Changes (Send-Only)",
         "readOnlyHint": False,
-        "destructiveHint": False,
+        "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": False,
     },
 )
-async def syncthing_override_folder(params: FolderWriteParams) -> str:
-    """Override remote changes on a send-only folder (make local authoritative)."""
+async def syncthing_override_folder(params: ConfirmFolderWriteParams) -> str:
+    """Override remote changes on a send-only folder (make local authoritative).
+    Requires SYNCTHING_WRITE_ENABLED=true and confirm=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
+    if not params.confirm:
+        return fmt({"error": (
+            "Override pushes this device's local state over remote edits on a "
+            "send-only folder — remote changes are discarded cluster-wide. "
+            "Set confirm=true to proceed."
+        )})
     try:
         client = get_instance(params.instance)
         await client._post("/rest/db/override", params={"folder": params.folder_id})
@@ -713,13 +737,23 @@ async def syncthing_override_folder(params: FolderWriteParams) -> str:
     annotations={
         "title": "Revert Local Changes (Receive-Only)",
         "readOnlyHint": False,
-        "destructiveHint": False,
+        "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": False,
     },
 )
-async def syncthing_revert_folder(params: FolderWriteParams) -> str:
-    """Revert local changes on a receive-only folder (pull remote state)."""
+async def syncthing_revert_folder(params: ConfirmFolderWriteParams) -> str:
+    """Revert local changes on a receive-only folder (pull remote state).
+    Requires SYNCTHING_WRITE_ENABLED=true and confirm=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
+    if not params.confirm:
+        return fmt({"error": (
+            "Revert discards this device's local changes on a receive-only "
+            "folder and re-downloads the remote state — local edits are lost. "
+            "Set confirm=true to proceed."
+        )})
     try:
         client = get_instance(params.instance)
         await client._post("/rest/db/revert", params={"folder": params.folder_id})

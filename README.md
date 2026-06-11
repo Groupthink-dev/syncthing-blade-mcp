@@ -8,6 +8,7 @@ Built to give AI assistants (Claude, etc.) read and control access to Syncthing'
 
 - **Token-efficient output** — compact JSON by default; `concise=false` for full details
 - **Multi-instance** — manage multiple Syncthing nodes from a single server
+- **Write-gated** — mutating tools require `SYNCTHING_WRITE_ENABLED=true`; destructive operations additionally require `confirm=true`
 - **Replication analysis** — safe-to-remove flags and reclaimable space calculation
 - **Syncthing v2.x compatible** — tested against v2.0.x REST API
 - **HTTP transport** — Streamable HTTP with bearer-token auth, Cloudflare Tunnel support
@@ -97,6 +98,23 @@ Built to give AI assistants (Claude, etc.) read and control access to Syncthing'
 | `syncthing_set_ignores` | Set .stignore patterns for a folder | Yes |
 | `syncthing_get_default_ignores` | Get default ignore patterns | No |
 | `syncthing_set_default_ignores` | Set default ignore patterns | Yes |
+
+## Write Safety
+
+All mutating tools (the "Yes" rows above) refuse unless the environment variable
+`SYNCTHING_WRITE_ENABLED=true` is set. The gate is off by default.
+
+Destructive or disruptive operations additionally require `confirm=true` on the
+call itself, with a refusal message explaining what the operation will do:
+
+| Tool | Why confirm is required |
+|------|------------------------|
+| `syncthing_override_folder` | Pushes local state over remote edits — remote changes discarded cluster-wide |
+| `syncthing_revert_folder` | Discards local changes on a receive-only folder |
+| `syncthing_restart` | Stops the daemon and interrupts all active sync transfers |
+| `syncthing_accept_device` | Admits a pending device into the cluster |
+| `syncthing_accept_folder` | Starts syncing a remote folder's contents to local disk |
+| `syncthing_set_ignores` | Replaces the folder's entire `.stignore` pattern set |
 
 ## Token Efficiency
 

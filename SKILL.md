@@ -103,6 +103,13 @@ replication analysis and safe disk-space reclamation.
 `syncthing_accept_folder`, `syncthing_reject_folder`, `syncthing_set_ignores`,
 `syncthing_set_default_ignores`
 
+All write tools require the environment variable `SYNCTHING_WRITE_ENABLED=true`
+(off by default). Destructive/disruptive tools — `syncthing_override_folder`,
+`syncthing_revert_folder`, `syncthing_restart`, `syncthing_accept_device`,
+`syncthing_accept_folder`, `syncthing_set_ignores` — additionally require
+`confirm=true` in the call; without it they return a refusal explaining what
+the operation would do.
+
 ## Multi-Instance
 
 When multiple instances are configured, every tool accepts an `instance` parameter.

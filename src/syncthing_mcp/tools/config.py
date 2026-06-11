@@ -11,6 +11,7 @@ from syncthing_mcp.models import (
     SetDefaultIgnoresInput,
     SetIgnoresInput,
     WriteParams,
+    require_write,
 )
 from syncthing_mcp.registry import get_instance, handle_error_global
 from syncthing_mcp.server import mcp
@@ -72,13 +73,23 @@ async def syncthing_pending_folders(params: ReadParams) -> str:
     annotations={
         "title": "Accept Pending Device",
         "readOnlyHint": False,
-        "destructiveHint": False,
+        "destructiveHint": True,
         "idempotentHint": False,
         "openWorldHint": False,
     },
 )
 async def syncthing_accept_device(params: AcceptDeviceInput) -> str:
-    """Accept a pending device by adding it to the Syncthing configuration."""
+    """Accept a pending device by adding it to the Syncthing configuration.
+    Requires SYNCTHING_WRITE_ENABLED=true and confirm=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
+    if not params.confirm:
+        return fmt({"error": (
+            "Accepting a pending device admits it into the Syncthing cluster, "
+            "allowing it to connect and be offered folder shares. "
+            "Set confirm=true to proceed."
+        )})
     try:
         client = get_instance(params.instance)
         pending = await client._get("/rest/cluster/pending/devices")
@@ -112,7 +123,11 @@ async def syncthing_accept_device(params: AcceptDeviceInput) -> str:
     },
 )
 async def syncthing_reject_device(params: DeviceWriteParams) -> str:
-    """Dismiss a pending device connection request."""
+    """Dismiss a pending device connection request.
+    Requires SYNCTHING_WRITE_ENABLED=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
     try:
         client = get_instance(params.instance)
         await client._delete(
@@ -133,13 +148,23 @@ async def syncthing_reject_device(params: DeviceWriteParams) -> str:
     annotations={
         "title": "Accept Pending Folder Offer",
         "readOnlyHint": False,
-        "destructiveHint": False,
+        "destructiveHint": True,
         "idempotentHint": False,
         "openWorldHint": False,
     },
 )
 async def syncthing_accept_folder(params: AcceptFolderInput) -> str:
-    """Accept a pending folder share offer. Uses default folder config as template."""
+    """Accept a pending folder share offer. Uses default folder config as template.
+    Requires SYNCTHING_WRITE_ENABLED=true and confirm=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
+    if not params.confirm:
+        return fmt({"error": (
+            "Accepting a pending folder adds it to the configuration and "
+            "starts syncing its contents to local disk from the offering "
+            "device(s). Set confirm=true to proceed."
+        )})
     try:
         client = get_instance(params.instance)
         pending = await client._get("/rest/cluster/pending/folders")
@@ -184,7 +209,11 @@ async def syncthing_accept_folder(params: AcceptFolderInput) -> str:
     },
 )
 async def syncthing_reject_folder(params: RejectFolderInput) -> str:
-    """Dismiss a pending folder share offer."""
+    """Dismiss a pending folder share offer.
+    Requires SYNCTHING_WRITE_ENABLED=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
     try:
         client = get_instance(params.instance)
         delete_params: dict[str, str] = {"folder": params.folder_id}
@@ -239,13 +268,23 @@ async def syncthing_get_ignores(params: FolderReadParams) -> str:
     annotations={
         "title": "Set Folder Ignore Patterns",
         "readOnlyHint": False,
-        "destructiveHint": False,
+        "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": False,
     },
 )
 async def syncthing_set_ignores(params: SetIgnoresInput) -> str:
-    """Set .stignore patterns for a folder. Replaces all existing patterns."""
+    """Set .stignore patterns for a folder. Replaces all existing patterns.
+    Requires SYNCTHING_WRITE_ENABLED=true and confirm=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
+    if not params.confirm:
+        return fmt({"error": (
+            "This REPLACES the folder's entire .stignore pattern set — "
+            "existing patterns are lost and the change alters which files "
+            "sync. Set confirm=true to proceed."
+        )})
     try:
         client = get_instance(params.instance)
         await client._post(
@@ -297,7 +336,11 @@ async def syncthing_get_default_ignores(params: ReadParams) -> str:
     },
 )
 async def syncthing_set_default_ignores(params: SetDefaultIgnoresInput) -> str:
-    """Set the default ignore patterns for newly created folders."""
+    """Set the default ignore patterns for newly created folders.
+    Requires SYNCTHING_WRITE_ENABLED=true."""
+    gate = require_write()
+    if gate:
+        return fmt({"error": gate})
     try:
         client = get_instance(params.instance)
         await client._put(

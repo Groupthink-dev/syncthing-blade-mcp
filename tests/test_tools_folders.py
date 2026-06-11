@@ -7,6 +7,7 @@ import respx
 
 from syncthing_mcp.models import (
     BrowseFolderInput,
+    ConfirmFolderWriteParams,
     EmptyInput,
     FileInfoInput,
     FolderInput,
@@ -281,7 +282,7 @@ class TestReplicationReport:
 
 
 class TestPauseFolder:
-    async def test_pause(self, mock_api):
+    async def test_pause(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.folders import syncthing_pause_folder
 
         mock_api.get(f"/rest/config/folders/{FOLDER_ID}").respond(
@@ -296,7 +297,7 @@ class TestPauseFolder:
 
 
 class TestResumeFolder:
-    async def test_resume(self, mock_api):
+    async def test_resume(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.folders import syncthing_resume_folder
 
         mock_api.get(f"/rest/config/folders/{FOLDER_ID}").respond(
@@ -312,7 +313,7 @@ class TestResumeFolder:
 
 
 class TestScanFolder:
-    async def test_scan(self, mock_api):
+    async def test_scan(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.folders import syncthing_scan_folder
 
         mock_api.post("/rest/db/scan").respond(status_code=200, content=b"")
@@ -577,18 +578,22 @@ class TestRemoteNeed:
 
 
 class TestOverrideFolder:
-    async def test_override(self, mock_api):
+    async def test_override(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.folders import syncthing_override_folder
 
         mock_api.post("/rest/db/override").respond(status_code=200, content=b"")
-        result = json.loads(await syncthing_override_folder(FolderInput(folder_id=FOLDER_ID)))
+        result = json.loads(await syncthing_override_folder(
+            ConfirmFolderWriteParams(folder_id=FOLDER_ID, confirm=True)
+        ))
         assert result["status"] == "override_requested"
 
 
 class TestRevertFolder:
-    async def test_revert(self, mock_api):
+    async def test_revert(self, mock_api, write_enabled_env):
         from syncthing_mcp.tools.folders import syncthing_revert_folder
 
         mock_api.post("/rest/db/revert").respond(status_code=200, content=b"")
-        result = json.loads(await syncthing_revert_folder(FolderInput(folder_id=FOLDER_ID)))
+        result = json.loads(await syncthing_revert_folder(
+            ConfirmFolderWriteParams(folder_id=FOLDER_ID, confirm=True)
+        ))
         assert result["status"] == "revert_requested"
